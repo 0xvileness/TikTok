@@ -21,21 +21,17 @@ console = Console()
 TIKTOK_CYAN = "#25F4EE"
 TIKTOK_RED = "#FE2C55"
 TT_LOGO = [
-"░██████████░██░██          ░██               ░██       ",
-"    ░██       ░██          ░██               ░██       ",
-"    ░██    ░██░██    ░██░████████  ░███████  ░██    ░██",
-"    ░██    ░██░██   ░██    ░██    ░██    ░██ ░██   ░██ ",
-"    ░██    ░██░███████     ░██    ░██    ░██ ░███████  ",
-"    ░██    ░██░██   ░██    ░██    ░██    ░██ ░██   ░██ ",
-"    ░██    ░██░██    ░██    ░████  ░███████  ░██    ░██",
+    "╔╦╗┬┬┌─┌┬┐┌─┐┬┌─  ╔═╗╔═╗╦╔╗╔╔╦╗",
+    " ║ │├┴┐ │ │ │├┴┐  ║ ║╚═╗║║║║ ║ ",
+    " ╩ ┴┴ ┴ ┴ └─┘┴ ┴  ╚═╝╚═╝╩╝╚╝ ╩ ",
+]                                                
                                                        
-                                                       
-                                                       
+                                                   
                                                              
                                                              
                                                                           
                                              
-]
+
 
 
 def num(x):
@@ -54,9 +50,9 @@ def header():
         logo.append(line[b:] + "\n", style=f"bold {TIKTOK_RED}")
 
     tag = Text(justify="center")
-    tag.append("ꫂ ၴႅၴ ", style=TIKTOK_CYAN)
+    tag.append("  ", style=TIKTOK_CYAN)
     tag.append("TikTok OSINT", style="bold white")
-    tag.append(" ꫂ ၴႅၴ", style=TIKTOK_RED)
+    tag.append(" ", style=TIKTOK_RED)
     sub = Text("when was this account created?  ·  no API key needed",
                style="dim italic", justify="center")
     credit = Text("part of TokIntel · by vile · contributed by @0xvileness",
