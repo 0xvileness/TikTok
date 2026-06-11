@@ -1,0 +1,237 @@
+import os
+import sys
+
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.align import Align
+from rich.prompt import Prompt
+from rich import box
+
+# Reuse the validated lookup engine living next to this file.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tiktok_created import (  # noqa: E402
+    lookup, new_session, save_reports, osint_pivots, integrity_flags,
+    save_avatar, probe_pivots,
+)
+
+console = Console()
+
+TIKTOK_CYAN = "#25F4EE"
+TIKTOK_RED = "#FE2C55"
+TT_LOGO = [
+"███████████  ███  █████      ███████████          █████",   
+"▒█▒▒▒███▒▒▒█ ▒▒▒  ▒▒███      ▒█▒▒▒███▒▒▒█         ▒▒███",     
+"▒   ▒███  ▒  ████  ▒███ █████▒   ▒███  ▒   ██████  ▒███ █████",
+    "▒███    ▒▒███  ▒███▒▒███     ▒███     ███▒▒███ ▒███▒▒███", 
+    "▒███     ▒███  ▒██████▒      ▒███    ▒███ ▒███ ▒██████▒",  
+    "▒███     ▒███  ▒███▒▒███     ▒███    ▒███ ▒███ ▒███▒▒███", 
+    "█████    █████ ████ █████    █████   ▒▒██████  ████ █████",
+   "▒▒▒▒▒    ▒▒▒▒▒ ▒▒▒▒ ▒▒▒▒▒    ▒▒▒▒▒     ▒▒▒▒▒▒  ▒▒▒▒ ▒▒▒▒▒", 
+                                                             
+                                                             
+                                                                          
+                                             
+]
+
+
+def num(x):
+    return f"{x:,}" if isinstance(x, int) else ("—" if x in (None, "") else str(x))
+
+
+def header():
+    # TikTok-style wordmark: cyan on the left, white core, red on the right.
+    w = max(len(line) for line in TT_LOGO)
+    a, b = w // 3, 2 * w // 3
+    logo = Text(justify="center")
+    for line in TT_LOGO:
+        line = line.ljust(w)
+        logo.append(line[:a], style=f"bold {TIKTOK_CYAN}")
+        logo.append(line[a:b], style="bold white")
+        logo.append(line[b:] + "\n", style=f"bold {TIKTOK_RED}")
+
+    tag = Text(justify="center")
+    tag.append("ꫂ ၴႅၴ ", style=TIKTOK_CYAN)
+    tag.append("TikTok OSINT", style="bold white")
+    tag.append(" ꫂ ၴႅၴ", style=TIKTOK_RED)
+    sub = Text("when was this account created?  ·  no API key needed",
+               style="dim italic", justify="center")
+    credit = Text("part of TokIntel · by vile · contributed by @0xvileness",
+                  style="dim", justify="center")
+
+    body = Group(logo, tag, Text(""), sub, credit)
+    console.print(Panel(body, box=box.DOUBLE, border_style=TIKTOK_CYAN, padding=(1, 3)))
+
+
+def render_account(d):
+    created = d.get("account_created") or "unknown"
+    tbl = Table.grid(padding=(0, 2))
+    tbl.add_column(justify="right", style="cyan", no_wrap=True)
+    tbl.add_column(style="white")
+    if d.get("nickname"):
+        tbl.add_row("Name", str(d["nickname"]))
+    tbl.add_row("Verified", "✅ yes" if d.get("verified") else "no")
+    tbl.add_row("Private", "🔒 yes" if d.get("private") else "no")
+    tbl.add_row("Followers", num(d.get("followers")))
+    tbl.add_row("Following", num(d.get("following")))
+    tbl.add_row("Likes", num(d.get("likes")))
+    tbl.add_row("Videos", num(d.get("videos")))
+    if d.get("region"):
+        tbl.add_row("Region", str(d["region"]))
+    if d.get("bio"):
+        tbl.add_row("Bio", str(d["bio"]))
+    tbl.add_row("User ID", str(d.get("user_id")))
+
+    body = Group(
+        Align.center(Text(f"📅  {created}", style="bold green")),
+        Align.center(Text("account created", style="dim")),
+        Text(""),
+        tbl,
+    )
+    console.print(Panel(body, title=f"[bold magenta]@{d.get('username')}[/]",
+                        border_style="green", box=box.ROUNDED, padding=(1, 2)))
+
+
+def render_simple(title, line, note=None, color="green"):
+    body = [Align.center(Text(line, style=f"bold {color}"))]
+    if note:
+        body.append(Align.center(Text(note, style="dim")))
+    console.print(Panel(Group(*body), title=title, border_style=color,
+                        box=box.ROUNDED, padding=(1, 2)))
+
+
+def render(data):
+    if "error" in data:
+        render_simple("not found", data["error"], color="red")
+    elif data.get("type") == "account":
+        render_account(data)
+    elif data.get("type") == "video":
+        render_simple("video", f"📅  uploaded {data.get('uploaded')}",
+                      note="video upload time, not account creation")
+    else:
+        render_simple("id decode", f"📅  {data.get('decoded')}", note=data.get("note"))
+
+
+_STATUS_BADGE = {
+    "exists":  "[green]✓[/]",
+    "missing": "[red]✗[/]",
+    "unknown": "[yellow]?[/]",
+    None:      " ",
+}
+
+
+def render_pivots(data):
+    pivots = osint_pivots(data)
+    if not pivots:
+        console.print("[dim]   no pivots available for this result[/]")
+        return
+
+    # HEAD-check the cross-platform probes in parallel; total wait ≈ 1s.
+    with console.status("[cyan]checking platforms…[/]", spinner="dots"):
+        probed = probe_pivots(pivots)
+
+    short, long = [], []
+    for label, url, status in probed:
+        (long if len(url) > 200 else short).append((label, url, status))
+
+    tbl = Table.grid(padding=(0, 2))
+    tbl.add_column(justify="center", style="white", no_wrap=True, width=2)
+    tbl.add_column(justify="right", style=TIKTOK_CYAN, no_wrap=True)
+    tbl.add_column(style="white", overflow="fold")
+    for label, url, status in short:
+        tbl.add_row(_STATUS_BADGE[status], label, f"[link={url}]{url}[/link]")
+    # Long signed-URL pivots: show the FULL URL so it's both clickable AND
+    # copyable. Terminal.app needs Cmd-click to fire embedded links.
+    for label, url, _ in long:
+        tbl.add_row(" ", label, f"[link={url}]{url}[/link]")
+
+    saved = save_avatar(data)
+    if saved:
+        tbl.add_row(" ", "avatar saved", f"[green]{saved}[/]")
+    tbl.add_row(" ", "[dim]hint[/]",
+                "[dim]✓/✗ = YouTube only (others can't be reliably probed) · Cmd-click any link[/]")
+
+    console.print(Panel(tbl, title="[bold]🧭 OSINT pivots[/]",
+                        border_style=TIKTOK_CYAN, box=box.ROUNDED, padding=(1, 2)))
+
+
+def render_flags(data):
+    flags = integrity_flags(data)
+    if not flags:
+        return
+    style = {"warn": ("⚠️ ", "yellow"), "info": ("ℹ️ ", "cyan"), "ok": ("✅", "green")}
+    body = Text()
+    for i, (sev, msg) in enumerate(flags):
+        icon, color = style.get(sev, ("·", "white"))
+        if i:
+            body.append("\n")
+        body.append(f"{icon} ", style=color)
+        body.append(msg)
+    border = "yellow" if any(s == "warn" for s, _ in flags) else (
+             "cyan" if any(s == "info" for s, _ in flags) else "green")
+    console.print(Panel(body, title="[bold]🚩 Integrity flags[/]",
+                        border_style=border, box=box.ROUNDED, padding=(1, 2)))
+
+
+def extras_menu(data):
+    """After an account card, offer the user a small numbered menu of extras.
+    Returning to the lookup prompt is always one Enter away — original UX
+    is preserved for anyone who doesn't want the new stuff."""
+    if not isinstance(data, dict) or data.get("type") != "account":
+        return
+    console.print(
+        "  [bold]What else?[/]  "
+        f"[{TIKTOK_CYAN}]1[/] pivot links  ·  "
+        f"[{TIKTOK_CYAN}]2[/] integrity flags  ·  "
+        f"[{TIKTOK_CYAN}]3[/] both  ·  "
+        "[dim]Enter to skip[/]"
+    )
+    try:
+        choice = Prompt.ask("[dim]  choose[/]", choices=["", "1", "2", "3"],
+                            default="", show_default=False, show_choices=False).strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if choice == "1":
+        render_pivots(data)
+    elif choice == "2":
+        render_flags(data)
+    elif choice == "3":
+        render_flags(data)
+        render_pivots(data)
+
+
+def main():
+    console.clear()
+    header()
+    console.print(
+        "  Type a [bold cyan]username[/], @handle, or profile/video URL.\n"
+        "  [dim]To quit: empty line, q, Esc, or Ctrl-C.[/]\n")
+
+    session = new_session()
+    results = []
+    while True:
+        try:
+            entry = Prompt.ask("[bold magenta]🔎 lookup[/]", default="", show_default=False).strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        # Accept Esc key (stdin sends \x1b) as another way to quit.
+        if not entry or entry.lower() in {"q", "quit", "exit"} or entry.startswith("\x1b"):
+            break
+        with console.status(f"[cyan]Fetching {entry}…[/]", spinner="dots"):
+            _, data = lookup(entry, session)
+        render(data)
+        extras_menu(data)
+        results.append({"target": entry, "data": data})
+
+    successes = [r for r in results if isinstance(r.get("data"), dict) and "error" not in r["data"]]
+    if successes:
+        _, tp = save_reports(results, "ui")
+        console.print(f"\n[dim]Looked up {len(results)} · report saved →[/] {tp}")
+    elif results:
+        console.print("\n[yellow]Nothing worth saving — every lookup errored. No report written.[/]")
+    console.print("\n[magenta]bye 👁[/]\n")
+
+
+if __name__ == "__main__":
+    main()
