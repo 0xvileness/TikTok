@@ -18,7 +18,7 @@ pip3 install -r requirements.txt
 Usage:
 
 python3 tiktok_created.py user
-python3 tiktok_created.py @nasa https://www.tiktok.com/@zachking
+python3 tiktok_created.py @user
 
 # Optional extras (off by default)
 python3 tiktok_created.py user --osint    # add pivot links
